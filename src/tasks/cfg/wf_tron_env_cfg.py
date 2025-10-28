@@ -9,6 +9,7 @@ from mjlab.managers.manager_term_config import (
     RewardTermCfg as RewTerm,
     TerminationTermCfg as DoneTerm,
     EventTermCfg as EventTerm,
+    CurriculumTermCfg as CurrTerm,
     term,
 )
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -380,3 +381,47 @@ class TerminationsCfg:
             "probability": 0.1,
         },  # Expect step = 1 / probability
     )
+
+
+@dataclass
+class CurriculumCfg:
+    pos_commands_ranges_level = CurrTerm(
+        func=mdp.pos_commands_ranges_level,
+        params={
+            "max_range": {
+                # pos
+                "pos_x": (-1.0, 1.0),
+                "pos_y": (-1.0, 1.0),
+                # vel
+                "vel_x": (-1.0, 1.0),
+                "vel_y": (-1.0, 1.0),
+                "vel_yaw": (-2.0, 2.0),
+            },
+            "update_interval": 80 * 24,  # 80 iterations * 24 steps per iteration
+            "command_name": "base_pose",
+        },
+    )
+
+
+SIM_CFG = SimulationCfg(
+    mujoco=MujocoCfg(
+        timestep=0.005,
+        iterations=1,
+    ),
+)
+
+
+@dataclass
+class WfTronEnvCfg(ManagerBasedRlEnvCfg):
+    scene: SceneCfg = field(default_factory=lambda: SCENE_CFG)
+    observations: ObservationCfg = field(default_factory=ObservationCfg)
+    actions: ActionCfg = field(default_factory=ActionCfg)
+    rewards: RewardsCfg = field(default_factory=RewardsCfg)
+    events: EventsCfg = field(default_factory=EventsCfg)
+    terminations: TerminationsCfg = field(default_factory=TerminationsCfg)
+    curriculum: CurriculumCfg = field(default_factory=CurriculumCfg)
+    sim: SimulationCfg = field(default_factory=lambda: SIM_CFG)
+    viewer: ViewerConfig = field(default_factory=lambda: VIEWER_CONFIG)
+    decimation: int = 4
+    episode_length_s: float = 20.0
+    seed: int = 0

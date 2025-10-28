@@ -153,4 +153,3 @@ def base_commands_vel_c(
 ) -> torch.Tensor:
     base_pose_command = env.command_manager.get_term(command_name)
     return base_pose_command.pose_command_vel_c
-

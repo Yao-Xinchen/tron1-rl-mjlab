@@ -31,4 +31,5 @@ TERRAINS_IMPORTER_CFG = TerrainImporterCfg(
     terrain_type="generator",
     terrain_generator=TERRAINS_CFG,
     max_init_terrain_level=5,
+    env_spacing=2.5,
 )
