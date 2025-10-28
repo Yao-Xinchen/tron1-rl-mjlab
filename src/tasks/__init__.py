@@ -1,7 +1,7 @@
 import gymnasium as gym
 
 gym.register(
-    id="WF_Tron1A",
+    id="WF_Tron",
     entry_point="mjlab.envs:ManagerBasedRlEnv",
     disable_env_checker=True,
     kwargs={
