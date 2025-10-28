@@ -6,7 +6,7 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.managers.manager_term_config import (
     ObservationGroupCfg as ObsGroup,
     ObservationTermCfg as ObsTerm,
-    RewardTermCfg as RewardTerm,
+    RewardTermCfg as RewTerm,
     TerminationTermCfg as DoneTerm,
     EventTermCfg as EventTerm,
     term,
@@ -272,4 +272,111 @@ class EventsCfg:
         mode="interval",
         interval_range_s=(1.0, 3.0),
         params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}}
+    )
+
+
+@dataclass
+class RewardsCfg:
+    # safety
+    safety_exp = RewTerm(
+        func=mdp.safety_reward_exp, weight=1.0, params={"base_height_target": 0.9, "std": math.sqrt(0.5)}
+    )
+
+    # tasks
+    track_base_position_exp = RewTerm(
+        func=mdp.track_base_position_exp,
+        weight=2.0,
+        params={
+            "command_name": "base_pose",
+            "std": math.sqrt(0.5),
+        },
+    )
+    track_base_orientation_exp = RewTerm(
+        func=mdp.track_base_orientation_exp,
+        weight=3.0,
+        params={
+            "command_name": "base_pose",
+            "std": math.sqrt(0.5),
+        },
+    )
+    track_base_pb = RewTerm(func=mdp.track_base_pb, weight=15.0)
+    track_base_reference_exp = RewTerm(
+        func=mdp.track_base_reference_exp,
+        weight=1.5,
+        params={"std": math.sqrt(0.5), "init_value": 0.98},
+    )
+
+    # penalties
+    dof_weighted_torques_l2 = RewTerm(
+        func=mdp.weighted_joint_torques_l2,
+        weight=-4.0e-5,
+        params={
+            "torque_weight": {
+                "abad_L_Joint": 0.2,
+                "hip_L_Joint": 0.2,
+                "knee_L_Joint": 0.2,
+                "abad_R_Joint": 0.2,
+                "hip_R_Joint": 0.2,
+                "knee_R_Joint": 0.2,
+                "wheel_L_Joint": 8.0,
+                "wheel_R_Joint": 8.0,
+            }
+        },
+    )
+    dof_weighted_power_l1 = RewTerm(
+        func=mdp.weighted_joint_power_l1,
+        weight=-2.5e-4,
+        params={
+            "power_weight": {
+                "abad_L_Joint": 1.0,
+                "hip_L_Joint": 1.0,
+                "knee_L_Joint": 1.0,
+                # "foot_L_Joint": 1.0,
+                "abad_R_Joint": 1.0,
+                "hip_R_Joint": 1.0,
+                "knee_R_Joint": 1.0,
+                # "foot_R_Joint": 1.0,
+                "wheel_L_Joint": 2.0,
+                "wheel_R_Joint": 2.0,
+            }
+        },
+    )
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.002)
+    action_smoothness = RewTerm(func=mdp.action_smoothness_penalty, weight=-0.006)
+
+    dof_vel_wheel_l2 = RewTerm(
+        func=mdp.joint_vel_l2, weight=-0.0005, params={"asset_cfg": SceneEntityCfg("robot", joint_names="wheel_.+")}
+    )
+    dof_vel_non_wheel_l2 = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=-0.001,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names="(?!wheel_).*")},
+    )
+    dof_non_wheel_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-5.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names="(?!wheel_).*")},
+    )
+
+
+@dataclass
+class TerminationsCfg:
+    """Termination terms for the MDP"""
+
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
+
+    bad_orientation = DoneTerm(
+        func=mdp.bad_orientation_stochastic,
+        params={
+            "limit_angle": math.pi * 0.4,
+            "probability": 0.1,
+        },  # Expect step = 1 / probability
+    )
+
+    bad_height = DoneTerm(
+        func=mdp.bad_height_stochastic,
+        params={
+            "limit_height": 0.5,
+            "probability": 0.1,
+        },  # Expect step = 1 / probability
     )
