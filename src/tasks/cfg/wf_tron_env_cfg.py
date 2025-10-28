@@ -55,6 +55,11 @@ class ActionCfg:
 class ObservationCfg:
     @dataclass
     class CommandsObsCfg(ObsGroup):
+        base_pose_commands = ObsTerm(func=mdp.base_commands_b)
+        # base_pose_commands = ObsTerm(func=mdp.fake_base_commands_b)
+        base_se3_decrease_rate = ObsTerm(func=mdp.base_se3_decrease_rate)
+        base_commands_vel = ObsTerm(func=mdp.base_commands_vel_c)
+
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True

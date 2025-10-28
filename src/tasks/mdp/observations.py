@@ -8,6 +8,10 @@ import torch
 
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+from mjlab.third_party.isaaclab.isaaclab.utils.math import (
+    matrix_from_quat,
+    quat_unique,
+)
 
 if TYPE_CHECKING:
     from mjlab.envs.manager_based_env import ManagerBasedEnv
@@ -101,3 +105,52 @@ def contact_forces(
     robot: Entity = env.scene[asset_cfg.name]
     contact_force = robot.data.sensor_data[sensor_name]
     return contact_force.flatten(start_dim=1)
+
+
+def base_commands_b(
+        env: ManagerBasedRlEnv,
+        command_name: str = "base_pose",
+) -> torch.Tensor:
+    target_pose_b = env.command_manager.get_command(command_name)
+    target_pose_xy = target_pose_b[:, :2]
+    target_orientation = matrix_from_quat(quat_unique(target_pose_b[:, 3:7]))
+    target_orientation_x = target_orientation[:, :, 0]
+
+    return torch.cat(
+        [
+            target_pose_xy,
+            target_orientation_x[:, :2],
+        ], dim=-1
+    )
+
+
+def fake_base_commands_b(
+        env: ManagerBasedRlEnv,
+) -> torch.Tensor:
+    target_pose_xy = torch.zeros((env.num_envs, 2), device=env.device)
+    target_orientation_x = torch.zeros((env.num_envs, 2), device=env.device)
+    target_orientation_x[:, 0] = 1.0
+
+    return torch.cat(
+        [
+            target_pose_xy,
+            target_orientation_x,
+        ], dim=-1
+    )
+
+
+def base_se3_decrease_rate(
+        env: ManagerBasedRlEnv,
+        command_name: str = "base_pose",
+) -> torch.Tensor:
+    base_pose_command = env.command_manager.get_term(command_name)
+    return base_pose_command.decrease_vel.unsqueeze(-1)
+
+
+def base_commands_vel_c(
+        env: ManagerBasedRlEnv,
+        command_name: str = "base_pose",
+) -> torch.Tensor:
+    base_pose_command = env.command_manager.get_term(command_name)
+    return base_pose_command.pose_command_vel_c
+
