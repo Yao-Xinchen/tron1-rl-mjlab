@@ -2,7 +2,7 @@ from pathlib import Path
 import mujoco
 
 from mjlab.entity import Entity, EntityCfg, EntityArticulationInfoCfg
-from mjlab.utils.spec_config import ActuatorCfg
+from mjlab.utils.spec_config import ActuatorCfg, ContactSensorCfg
 
 current_dir: Path = Path(__file__).parent.resolve()
 
@@ -35,9 +35,18 @@ WF_TRON_ARTICULATION = EntityArticulationInfoCfg(
     ),
 )
 
+WF_TRON_CONTACT_SENSOR = ContactSensorCfg(
+    name="contact_sensors",
+    subtree1="base_Link",
+    data=("found", "force"),
+    reduce="netforce",
+    num=10,
+)
+
 WF_TRON_ROBOT_CFG = EntityCfg(
     spec_fn=get_spec,
     articulation=WF_TRON_ARTICULATION,
+    sensors=(WF_TRON_CONTACT_SENSOR,),
 )
 
 if __name__ == "__main__":
