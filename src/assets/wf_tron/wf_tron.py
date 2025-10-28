@@ -26,6 +26,7 @@ WF_TRON_WHEEL_ACTUATORS = ActuatorCfg(
     effort_limit=40.0,
     stiffness=0.0,
     damping=0.5,
+    frictionloss=0.33,
 )
 
 WF_TRON_ARTICULATION = EntityArticulationInfoCfg(

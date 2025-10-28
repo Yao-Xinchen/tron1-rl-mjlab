@@ -77,7 +77,7 @@ def base_height_error(
         return torch.zeros((env.num_envs, 1), device=env.device)
 
     foot_position = asset.data.body_link_pos_w[:, env._wheels_link_ids, :]
-    base_height_w = asset.data.root_link_pos_w[:, 2] - foot_position[:, :, 2].mean(dim=-1) + 0.127
+    base_height_w = asset.data.root_link_pos_w[:, 2] - foot_position[:, :, 2].mean(dim=-1) + env._foot_radius
 
     return (base_height_w - base_height_target).unsqueeze(1)
 

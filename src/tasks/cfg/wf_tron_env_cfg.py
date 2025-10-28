@@ -156,3 +156,120 @@ class ObservationCfg:
     policy = PolicyObsCfg()
     history = HistoryObsCfg()
     critic = CriticObsCfg()
+
+
+@dataclass
+class EventsCfg:
+    # Startup events
+    prepare_quantities = EventTerm(
+        func=mdp.prepare_quantities,
+        mode="startup",
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+    add_base_mass = EventTerm(
+        func=mdp.randomize_field,
+        mode="startup",
+        params={
+            "field": "body_mass",
+            "ranges": (-2.0, 5.0),
+            "operation": "add",
+            "distribution": "uniform",
+            "asset_cfg": SceneEntityCfg("robot", body_names="base_Link"),
+        },
+    )
+    add_link_mass = EventTerm(
+        func=mdp.randomize_field,
+        mode="startup",
+        params={
+            "field": "body_mass",
+            "ranges": (0.8, 1.2),
+            "operation": "scale",
+            "distribution": "uniform",
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_[LR]_Link"),
+        },
+    )
+    robot_physics_material = EventTerm(
+        func=mdp.randomize_field,
+        mode="startup",
+        params={
+            "field": "geom_friction",
+            "ranges": {
+                0: (0.4, 1.2),  # Static friction
+                1: (0.2, 0.9),  # Dynamic friction (torsional)
+                2: (0.0, 1.0),  # Rolling friction
+            },
+            "operation": "abs",
+            "distribution": "uniform",
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+        },
+    )
+    robot_center_of_mass = EventTerm(
+        func=mdp.randomize_field,
+        mode="startup",
+        params={
+            "field": "body_ipos",
+            "ranges": {
+                0: (-0.075, 0.075),  # X axis
+                1: (-0.075, 0.075),  # Y axis
+                2: (-0.075, 0.075),  # Z axis
+            },
+            "operation": "add",
+            "distribution": "uniform",
+            "asset_cfg": SceneEntityCfg("robot"),
+        },
+    )
+
+    # Reset events
+    reset_robot_base = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "velocity_range": {
+                "x": (-0.5, 0.5),
+                "y": (-0.5, 0.5),
+                "z": (-0.5, 0.5),
+                "roll": (-0.5, 0.5),
+                "pitch": (-0.5, 0.5),
+                "yaw": (-0.5, 0.5),
+            },
+        },
+    )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (-0.2, 0.2),
+            "velocity_range": (-0.5, 0.5),
+        },
+    )
+    randomize_joint_stiffness = EventTerm(
+        func=mdp.randomize_field,
+        mode="reset",
+        params={
+            "field": "jnt_stiffness",
+            "ranges": (0.5, 2.0),
+            "operation": "scale",
+            "distribution": "log_uniform",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        },
+    )
+    randomize_joint_damping = EventTerm(
+        func=mdp.randomize_field,
+        mode="reset",
+        params={
+            "field": "dof_damping",
+            "ranges": (0.5, 2.0),
+            "operation": "scale",
+            "distribution": "log_uniform",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        },
+    )
+
+    # Interval events
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(1.0, 3.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}}
+    )
