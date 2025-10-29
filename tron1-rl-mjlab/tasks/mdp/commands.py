@@ -312,12 +312,12 @@ class UniformWorldPoseCommandCfg(UniformPoseCommandCfg):
     class Ranges:
         pos_x: tuple[float, float]
         pos_y: tuple[float, float]
-        pos_z: tuple[float, float]
         vel_x: tuple[float, float]
         vel_y: tuple[float, float]
         vel_yaw: tuple[float, float]
 
         # Fixed values (not configurable)
+        pos_z: tuple[float, float] = field(default=(0.7, 1.1), init=False)
         roll: tuple[float, float] = field(default=(0.0, 0.0), init=False)
         pitch: tuple[float, float] = field(default=(0.0, 0.0), init=False)
         yaw: tuple[float, float] = field(default=(-3.14, 3.14), init=False)

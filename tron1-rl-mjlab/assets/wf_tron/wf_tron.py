@@ -46,6 +46,11 @@ WF_TRON_CONTACT_SENSOR = ContactSensorCfg(
 
 WF_TRON_ROBOT_CFG = EntityCfg(
     spec_fn=get_spec,
+    init_state=EntityCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.8+0.166),
+        joint_pos={".*": 0.0},
+        joint_vel={".*": 0.0},
+    ),
     articulation=WF_TRON_ARTICULATION,
     sensors=(WF_TRON_CONTACT_SENSOR,),
 )

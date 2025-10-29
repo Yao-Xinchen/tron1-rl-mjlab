@@ -41,7 +41,7 @@
         <light directional="true" diffuse=".8 .8 .8" pos="0 0 10" dir="0 0 -10"/>
         <body name="base_Link" pos="0 0 0.92">
             <inertial pos="0.0457123 0.000139854 -0.163809" quat="0.972578 -0.00615364 -0.232461 0.00398682" mass="9.595" diaginertia="0.154712 0.11093 0.0846371" />
-            <joint type="free" limited="false" damping="0.0000" stiffness="0.0000" armature="0"/>
+            <joint name="root" type="free" limited="false" damping="0.0000" stiffness="0.0000" armature="0"/>
             <site name="imu" pos="0 0 0"/>
             <geom class="visual" rgba="0.79216 0.81961 0.93333 1" mesh="base_Link" />
             <geom name="base_collision" size="0.135 0.13 0.095" pos="0.03 0 -0.072" type="box" rgba="0 0 1 0" />

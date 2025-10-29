@@ -19,8 +19,10 @@ _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 def pos_commands_ranges_level(
         env: ManagerBasedRlEnv,
+        env_ids: torch.Tensor | slice,
         max_range: dict[str, tuple[float, float]],
         update_interval: int = 80 * 24,
+        asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
     command_cfg: UniformWorldPoseCommandCfg = env.command_manager.get_term(command_name).cfg
