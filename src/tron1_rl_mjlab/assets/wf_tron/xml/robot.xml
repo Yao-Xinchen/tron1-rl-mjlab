@@ -66,7 +66,7 @@
 
                         <body name="wheel_L_Link" pos="0.15 0.0435 -0.25981">
                             <inertial pos="3e-05 0.00807 -2e-05" quat="0.683013 0.183016 0.183017 0.683011" mass="1.08" diaginertia="0.00974272 0.00515568 0.00515344" />
-                            <joint name="wheel_L_Joint" pos="0 0 0" axis="0 1 0" limited="true" range="-1000000 1000000" frictionloss="0.01" />
+                            <joint name="wheel_L_Joint" pos="0 0 0" axis="0 1 0" />
                             <geom class="visual" rgba="0.26667 0.26667 0.26667 1" mesh="wheel_L_Link" />
                             <geom name="wheel_L_collision" pos="0.0 0.008 0.0" size="0.127 0.005" quat="0.707107 0.707107 0 0" type="cylinder" rgba="1 0.423529 0.0392157 1" />
                         </body>
@@ -93,7 +93,7 @@
 
                         <body name="wheel_R_Link" pos="0.15 -0.0435 -0.25981">
                             <inertial pos="3e-05 -0.00807 -2e-05" quat="0.683011 0.183017 0.183016 0.683013" mass="1.08" diaginertia="0.00974272 0.00515568 0.00515344" />
-                            <joint name="wheel_R_Joint" pos="0 0 0" axis="0 1 0" limited="true" range="-1000000 1000000" frictionloss="0.01" />
+                            <joint name="wheel_R_Joint" pos="0 0 0" axis="0 1 0" />
                             <geom class="visual" rgba="0.26667 0.26667 0.26667 1" mesh="wheel_R_Link" />
                             <geom name="wheel_R_collision" pos="0.0 -0.008 0.0" size="0.127 0.005" quat="0.707107 0.707107 0 0" type="cylinder" rgba="1 0.423529 0.0392157 1" />
                         </body>
@@ -104,31 +104,23 @@
     </worldbody>
 
     <actuator>
-        <!-- Position actuators for leg joints -->
+        <!-- Left side: position actuators for leg joints, then velocity actuator for wheel -->
         <position name="abad_L_Joint"  joint="abad_L_Joint"  kp="40.0" kv="1.8" forcerange="-80 80"/>
         <position name="hip_L_Joint"   joint="hip_L_Joint"   kp="40.0" kv="1.8" forcerange="-80 80"/>
         <position name="knee_L_Joint"  joint="knee_L_Joint"  kp="40.0" kv="1.8" forcerange="-80 80"/>
+        <velocity name="wheel_L_Joint" joint="wheel_L_Joint" kv="0.5" forcerange="-40 40" ctrlrange="-25 25"/>
+
+        <!-- Right side: position actuators for leg joints, then velocity actuator for wheel -->
         <position name="abad_R_Joint"  joint="abad_R_Joint"  kp="40.0" kv="1.8" forcerange="-80 80"/>
         <position name="hip_R_Joint"   joint="hip_R_Joint"   kp="40.0" kv="1.8" forcerange="-80 80"/>
         <position name="knee_R_Joint"  joint="knee_R_Joint"  kp="40.0" kv="1.8" forcerange="-80 80"/>
-
-        <!-- Velocity actuators for wheels -->
-        <velocity name="wheel_L_Joint" joint="wheel_L_Joint" kv="0.5" forcerange="-40 40"/>
-        <velocity name="wheel_R_Joint" joint="wheel_R_Joint" kv="0.5" forcerange="-40 40"/>
+        <velocity name="wheel_R_Joint" joint="wheel_R_Joint" kv="0.5" forcerange="-40 40" ctrlrange="-25 25"/>
     </actuator>
 
     <sensor>
         <framequat name="quat" objtype="site" objname="imu"/>
         <gyro name="gyro" site="imu"/>
         <accelerometer name="acc" site="imu"/>
-        <jointpos name="abad_L_Joint"    joint="abad_L_Joint" />
-        <jointpos name="hip_L_Joint"     joint="hip_L_Joint" />
-        <jointpos name="knee_L_Joint"    joint="knee_L_Joint" />
-        <jointpos name="wheel_L_Joint"   joint="wheel_L_Joint" />
-        <jointpos name="abad_R_Joint"    joint="abad_R_Joint" />
-        <jointpos name="hip_R_Joint"     joint="hip_R_Joint" />
-        <jointpos name="knee_R_Joint"    joint="knee_R_Joint" />
-        <jointpos name="wheel_R_Joint"   joint="wheel_R_Joint" />
     </sensor>
 
 </mujoco>
