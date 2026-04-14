@@ -165,22 +165,6 @@ class OnPolicyRunner:
         self.alg.eval_mode()  # Switch to evaluation mode (e.g. for dropout)
         return self.alg.get_policy().to(device)  # type: ignore
 
-    def get_inference_policy_student(self, device: str | None = None) -> MLPModel:
-        """Return the policy in student mode (proprioceptive encoder) for deployment."""
-        self.alg.eval_mode()
-        policy = self.alg.get_policy()
-        if hasattr(policy, "use_student_mode"):
-            policy.use_student_mode()
-        return policy.to(device)  # type: ignore
-
-    def get_inference_policy_teacher(self, device: str | None = None) -> MLPModel:
-        """Return the policy in teacher mode (privileged encoder) for evaluation."""
-        self.alg.eval_mode()
-        policy = self.alg.get_policy()
-        if hasattr(policy, "use_teacher_mode"):
-            policy.use_teacher_mode()
-        return policy.to(device)  # type: ignore
-
     def export_policy_to_jit(self, path: str, filename: str = "policy.pt") -> None:
         """Export the model to a Torch JIT file."""
         jit_model = self.alg.get_policy().as_jit()

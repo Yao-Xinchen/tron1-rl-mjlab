@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from itertools import chain
 from tensordict import TensorDict
@@ -59,10 +58,6 @@ class PPO:
         symmetry_cfg: dict | None = None,
         # Distributed training parameters
         multi_gpu_cfg: dict | None = None,
-        # Teacher-student parameters
-        student_reinforcing: bool = False,
-        num_proprio_encoder_substeps: int = 1,
-        grad_penalty_coef_schedule: list | None = None,
     ) -> None:
         """Initialize the algorithm with models, storage, and optimization settings."""
         # Device-related parameters
@@ -113,46 +108,14 @@ class PPO:
         else:
             self.symmetry = None
 
-        # Teacher-student parameters
-        self.student_reinforcing = student_reinforcing
-        self.num_proprio_encoder_substeps = num_proprio_encoder_substeps
-        self.grad_penalty_coef_schedule = grad_penalty_coef_schedule
-        self.counter = 0
-
         # PPO components
         self.actor = actor.to(self.device)
         self.critic = critic.to(self.device)
 
-        # Create the optimizer — overridden below for TSModel
+        # Create the optimizer
         self.optimizer = resolve_optimizer(optimizer)(
             chain(self.actor.parameters(), self.critic.parameters()), lr=learning_rate
         )  # type: ignore
-        self.extra_optimizer: optim.Optimizer | None = None
-
-        # For TSModel: split optimizer to separate the proprioceptive encoder
-        from rsl_rl.models.ts_model import TSModel
-        if isinstance(self.actor, TSModel):
-            if not student_reinforcing:
-                # Main optimizer: actor (excl. proprioceptive encoder) + critic
-                actor_main_params = [
-                    p for n, p in self.actor.named_parameters() if "proprioceptive_encoder" not in n
-                ]
-                self.optimizer = resolve_optimizer(optimizer)(
-                    chain(actor_main_params, self.critic.parameters()), lr=learning_rate
-                )  # type: ignore
-                # Extra optimizer: proprioceptive encoder only
-                if self.actor.proprioceptive_encoder is not None:
-                    self.extra_optimizer = optim.Adam(
-                        self.actor.proprioceptive_encoder.parameters(), lr=1e-3
-                    )
-            else:
-                # Student-reinforcing mode: exclude privileged encoder from main optimizer
-                actor_main_params = [
-                    p for n, p in self.actor.named_parameters() if "privileged_encoder" not in n
-                ]
-                self.optimizer = resolve_optimizer(optimizer)(
-                    chain(actor_main_params, self.critic.parameters()), lr=learning_rate
-                )  # type: ignore
 
         # Add storage
         self.storage = storage
@@ -250,19 +213,10 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
-        mean_gradient_penalty = 0.0
-        mean_proprio_extra_loss = 0.0
         # RND loss
         mean_rnd_loss = 0 if self.rnd else None
         # Symmetry loss
         mean_symmetry_loss = 0 if self.symmetry else None
-
-        # Compute gradient penalty coefficient from schedule
-        gradient_penalty_coef = 0.0
-        if self.grad_penalty_coef_schedule is not None:
-            s_start, s_end, s_begin_step, s_duration = self.grad_penalty_coef_schedule
-            stage = min(max((self.counter - s_begin_step), 0) / max(s_duration, 1), 1.0)
-            gradient_penalty_coef = stage * (s_end - s_start) + s_start
 
         # Get mini batch generator
         if self.actor.is_recurrent or self.critic.is_recurrent:
@@ -299,24 +253,12 @@ class PPO:
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: We need to do this because we updated the policy with the new parameters
-            # For gradient penalty, enable grad on the raw policy obs so we can differentiate.
-            if self.grad_penalty_coef_schedule is not None:
-                policy_obs_for_grad = batch.observations[self.actor.raw_obs_key].clone().detach().requires_grad_(True)  # type: ignore[attr-defined]
-                obs_for_grad = batch.observations.clone()
-                obs_for_grad[self.actor.raw_obs_key] = policy_obs_for_grad  # type: ignore[attr-defined]
-                self.actor(
-                    obs_for_grad,
-                    masks=batch.masks,
-                    hidden_state=batch.hidden_states[0],
-                    stochastic_output=True,
-                )
-            else:
-                self.actor(
-                    batch.observations,
-                    masks=batch.masks,
-                    hidden_state=batch.hidden_states[0],
-                    stochastic_output=True,
-                )
+            self.actor(
+                batch.observations,
+                masks=batch.masks,
+                hidden_state=batch.hidden_states[0],
+                stochastic_output=True,
+            )
             actions_log_prob = self.actor.get_output_log_prob(batch.actions)  # type: ignore
             values = self.critic(batch.observations, masks=batch.masks, hidden_state=batch.hidden_states[1])
             # Note: We only keep the distribution parameters and entropy of the first augmentation (the original one)
@@ -369,17 +311,6 @@ class PPO:
                 value_loss = (batch.returns - values).pow(2).mean()
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
-
-            # Lipschitz gradient penalty on policy observations
-            if self.grad_penalty_coef_schedule is not None:
-                grad_log_prob = torch.autograd.grad(
-                    outputs=actions_log_prob.sum(),
-                    inputs=policy_obs_for_grad,
-                    create_graph=True,
-                )[0]
-                gradient_penalty = torch.sum(torch.square(grad_log_prob), dim=-1).mean()
-                loss = loss + gradient_penalty_coef * gradient_penalty
-                mean_gradient_penalty += gradient_penalty.item()
 
             # Symmetry loss
             if self.symmetry:
@@ -447,20 +378,6 @@ class PPO:
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
 
-            # Extra gradient step: distill privileged latent into proprioceptive encoder
-            if self.extra_optimizer is not None:
-                for _ in range(self.num_proprio_encoder_substeps):
-                    proprio_latent = self.actor.proprio_encode(batch.observations)  # type: ignore[attr-defined]
-                    privileged_latent = self.actor.privileged_encode(batch.observations).detach()  # type: ignore[attr-defined]
-                    proprio_extra_loss = F.mse_loss(privileged_latent, proprio_latent)
-                    self.extra_optimizer.zero_grad()
-                    proprio_extra_loss.backward()
-                    nn.utils.clip_grad_norm_(
-                        self.actor.proprioceptive_encoder.parameters(), self.max_grad_norm  # type: ignore[union-attr]
-                    )
-                    self.extra_optimizer.step()
-                    mean_proprio_extra_loss += proprio_extra_loss.item()
-
             # Store the losses
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
@@ -477,10 +394,6 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
-        mean_gradient_penalty /= num_updates
-        num_updates_extra = num_updates * self.num_proprio_encoder_substeps
-        if num_updates_extra > 0 and self.extra_optimizer is not None:
-            mean_proprio_extra_loss /= num_updates_extra
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
         if mean_symmetry_loss is not None:
@@ -488,16 +401,12 @@ class PPO:
 
         # Clear the storage
         self.storage.clear()
-        self.update_counter()
 
         # Construct the loss dictionary
         loss_dict = {
             "value": mean_value_loss,
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
-            "gradient_penalty": mean_gradient_penalty,
-            "gradient_penalty_coef": gradient_penalty_coef,
-            "proprio_extra": mean_proprio_extra_loss,
         }
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
@@ -505,10 +414,6 @@ class PPO:
             loss_dict["symmetry"] = mean_symmetry_loss
 
         return loss_dict
-
-    def update_counter(self) -> None:
-        """Increment the update counter (used for gradient penalty scheduling)."""
-        self.counter += 1
 
     def train_mode(self) -> None:
         """Set train mode for learnable models."""
@@ -531,8 +436,6 @@ class PPO:
             "critic_state_dict": self.critic.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
         }
-        if self.extra_optimizer is not None:
-            saved_dict["extra_optimizer_state_dict"] = self.extra_optimizer.state_dict()
         if self.rnd:
             saved_dict["rnd_state_dict"] = self.rnd.state_dict()
             saved_dict["rnd_optimizer_state_dict"] = self.rnd_optimizer.state_dict()
@@ -557,8 +460,6 @@ class PPO:
             self.critic.load_state_dict(loaded_dict["critic_state_dict"], strict=strict)
         if load_cfg.get("optimizer"):
             self.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
-            if self.extra_optimizer is not None and "extra_optimizer_state_dict" in loaded_dict:
-                self.extra_optimizer.load_state_dict(loaded_dict["extra_optimizer_state_dict"])
         if load_cfg.get("rnd") and self.rnd:
             self.rnd.load_state_dict(loaded_dict["rnd_state_dict"], strict=strict)
             self.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
