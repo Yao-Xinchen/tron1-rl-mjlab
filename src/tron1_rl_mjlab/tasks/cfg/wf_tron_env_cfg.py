@@ -29,14 +29,17 @@ DEPTH_CAMERA_CFG = CameraSensorCfg(
     height=128,
     use_textures=False,
     use_shadows=False,
+    enabled_geom_groups=(0, 1),  # terrain + visual meshes only; exclude collision geoms (group 2)
 )
 
 HEIGHT_SCAN_CFG = RayCastSensorCfg(
     name="height_scan",
     frame=ObjRef(type="body", name="base_Link", entity="robot"),
-    pattern=GridPatternCfg(size=(1.0, 1.0), resolution=0.1),
+    pattern=GridPatternCfg(size=(2.0, 2.0), resolution=0.1),
     ray_alignment="yaw",
     max_distance=10.0,
+    include_geom_groups=(0,),  # terrain only; robot collision geoms are in group 2
+    debug_vis=True,
 )
 
 SCENE_CFG = SceneCfg(
@@ -171,7 +174,12 @@ def make_observations() -> dict[str, ObservationGroupCfg]:
     }
 
     depth_camera_terms = {
-        "depth": ObservationTermCfg(func=mdp.depth_image),
+        "depth_camera": ObservationTermCfg(
+            func=mdp.depth_image,
+            noise=GaussianNoiseCfg(mean=0.0, std=0.01),
+            history_length=5,
+            flatten_history_dim=False,
+        ),
     }
 
     height_map_terms = {
@@ -201,7 +209,7 @@ def make_observations() -> dict[str, ObservationGroupCfg]:
         ),
         "depth_camera": ObservationGroupCfg(
             terms=depth_camera_terms,
-            enable_corruption=False,
+            enable_corruption=True,
             concatenate_terms=False,
         ),
         "height_map": ObservationGroupCfg(
