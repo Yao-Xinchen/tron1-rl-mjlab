@@ -11,7 +11,8 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
-from mjlab.sensor import CameraSensorCfg
+from mjlab.sensor import CameraSensorCfg, ObjRef, RayCastSensorCfg
+from mjlab.sensor.raycast_sensor import GridPatternCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.utils.noise import GaussianNoiseCfg
 from mjlab.viewer import ViewerConfig
@@ -30,12 +31,20 @@ DEPTH_CAMERA_CFG = CameraSensorCfg(
     use_shadows=False,
 )
 
+HEIGHT_SCAN_CFG = RayCastSensorCfg(
+    name="height_scan",
+    frame=ObjRef(type="body", name="base_Link", entity="robot"),
+    pattern=GridPatternCfg(size=(1.0, 1.0), resolution=0.1),
+    ray_alignment="yaw",
+    max_distance=10.0,
+)
+
 SCENE_CFG = SceneCfg(
     num_envs=4096,
     extent=1.0,
     terrain=PLANE_ENTITY_CFG,
     entities={"robot": WF_TRON_ROBOT_CFG},
-    sensors=(DEPTH_CAMERA_CFG,),
+    sensors=(DEPTH_CAMERA_CFG, HEIGHT_SCAN_CFG),
 )
 
 VIEWER_CONFIG = ViewerConfig(
@@ -165,6 +174,13 @@ def make_observations() -> dict[str, ObservationGroupCfg]:
         "depth": ObservationTermCfg(func=mdp.depth_image),
     }
 
+    height_map_terms = {
+        "height_scan": ObservationTermCfg(
+            func=mdp.height_scan,
+            params={"sensor_name": "height_scan"},
+        ),
+    }
+
     return {
         "actor": ObservationGroupCfg(
             terms=commands_terms | policy_terms,
@@ -187,6 +203,11 @@ def make_observations() -> dict[str, ObservationGroupCfg]:
             terms=depth_camera_terms,
             enable_corruption=False,
             concatenate_terms=False,
+        ),
+        "height_map": ObservationGroupCfg(
+            terms=height_map_terms,
+            enable_corruption=False,
+            concatenate_terms=True,
         ),
     }
 
