@@ -16,7 +16,7 @@ class RslRlEncoderRNNActorCfg(RslRlModelCfg):
 
     # Proprioceptive MLP encoder
     actor_obs_group: str = "actor"
-    proprio_encoder_hidden_dims: tuple = (256, 128)
+    proprio_encoder_hidden_dims: tuple = (128, 64)
     proprio_encoder_output_dim: int = 64
 
     # 2D CNN for current depth image
@@ -27,15 +27,13 @@ class RslRlEncoderRNNActorCfg(RslRlModelCfg):
     cnn_output_dim: int = 128
 
     # GRU that fuses proprio + vision encodings
-    rnn_hidden_dim: int = 256
+    rnn_hidden_dim: int = 512
     rnn_num_layers: int = 1
 
     # Decoder heads: reconstruct privileged obs + height map
-    # GRU decoder: trains GRU + decoders
-    # CNN decoder: trains CNN + cnn_decoders
     privileged_decoder_obs_group: str = "critic"
     height_map_decoder_obs_group: str = "height_map"
-    decoder_hidden_dims: tuple = (256, 128)
+    decoder_hidden_dims: tuple = (512, 256)
 
 
 @dataclass
