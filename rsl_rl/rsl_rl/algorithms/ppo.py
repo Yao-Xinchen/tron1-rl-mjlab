@@ -409,8 +409,10 @@ class PPO:
         if mean_symmetry_loss is not None:
             mean_symmetry_loss /= num_updates
 
-        # Clear the storage
+        # Clear the storage and release PyTorch cached memory so other CUDA
+        # allocators (e.g. Warp) can use it for the next sim step.
         self.storage.clear()
+        torch.cuda.empty_cache()
 
         # Construct the loss dictionary
         loss_dict = {

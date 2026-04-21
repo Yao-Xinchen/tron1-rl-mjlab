@@ -63,9 +63,12 @@ class PPOWithDecoder(PPO):
         self, batch: RolloutStorage.Batch, original_batch_size: int
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """Compute MSE reconstruction losses from GRU and CNN decoder heads."""
-        decoder_outputs = self.actor.get_last_decoder_outputs(masks=batch.masks)  # type: ignore[attr-defined]
+        decoder_outputs = self.actor.get_last_decoder_outputs()  # type: ignore[attr-defined]
         if decoder_outputs is None:
             return torch.zeros(1, device=self.device).squeeze(), {}
+
+        priv_pred = decoder_outputs["privileged"]
+        hmap_pred = decoder_outputs["height_map"]
 
         # Unpad observation targets when in recurrent (padded trajectory) mode
         if batch.masks is not None:
@@ -79,23 +82,11 @@ class PPOWithDecoder(PPO):
             priv_target = batch.observations[self.privileged_obs_group].detach()  # type: ignore[index]
             hmap_target = batch.observations[self.height_map_obs_group].detach()  # type: ignore[index]
 
-        # GRU decoder losses
-        gru_priv_loss = F.mse_loss(decoder_outputs["privileged"], priv_target)
-        gru_hmap_loss = F.mse_loss(decoder_outputs["height_map"], hmap_target)
+        priv_loss = F.mse_loss(priv_pred, priv_target)
+        hmap_loss = F.mse_loss(hmap_pred, hmap_target)
+        aux_loss = self.recon_loss_coef * (priv_loss + hmap_loss)
 
-        # CNN decoder losses (only if CNN decoder outputs are present)
-        log: dict[str, float] = {
-            "recon_gru_privileged": gru_priv_loss.item(),
-            "recon_gru_height_map": gru_hmap_loss.item(),
+        return aux_loss, {
+            "recon_privileged": priv_loss.item(),
+            "recon_height_map": hmap_loss.item(),
         }
-
-        aux_loss = self.recon_loss_coef * (gru_priv_loss + gru_hmap_loss)
-
-        if "cnn_privileged" in decoder_outputs:
-            cnn_priv_loss = F.mse_loss(decoder_outputs["cnn_privileged"], priv_target)
-            cnn_hmap_loss = F.mse_loss(decoder_outputs["cnn_height_map"], hmap_target)
-            aux_loss = aux_loss + self.recon_loss_coef * (cnn_priv_loss + cnn_hmap_loss)
-            log["recon_cnn_privileged"] = cnn_priv_loss.item()
-            log["recon_cnn_height_map"] = cnn_hmap_loss.item()
-
-        return aux_loss, log
