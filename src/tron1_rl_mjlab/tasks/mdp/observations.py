@@ -22,8 +22,7 @@ def joint_acc(
         asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
-    jnt_ids = asset_cfg.joint_ids
-    return asset.data.joint_acc[:, jnt_ids]
+    return asset.data.joint_acc[:, asset_cfg.joint_ids]
 
 
 def actuator_force(
@@ -41,8 +40,7 @@ def body_lin_vel(
         asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
 ) -> torch.Tensor:
     asset: Entity = env.scene[asset_cfg.name]
-    body_ids = asset_cfg.body_ids
-    return asset.data.body_link_lin_vel_w[:, body_ids].flatten(start_dim=1)
+    return asset.data.body_link_lin_vel_w[:, asset_cfg.body_ids].flatten(start_dim=1)
 
 
 def base_height_error(
@@ -93,43 +91,27 @@ def base_commands_b(
 ) -> torch.Tensor:
     target_pose_b = env.command_manager.get_command(command_name)
     target_pose_xy = target_pose_b[:, :2]
-    target_orientation = matrix_from_quat(quat_unique(target_pose_b[:, 3:7]))
-    target_orientation_x = target_orientation[:, :, 0]
-
-    return torch.cat(
-        [
-            target_pose_xy,
-            target_orientation_x[:, :2],
-        ], dim=-1
-    )
+    target_orientation_x = matrix_from_quat(quat_unique(target_pose_b[:, 3:7]))[:, :, 0]
+    return torch.cat([target_pose_xy, target_orientation_x[:, :2]], dim=-1)
 
 
-def fake_base_commands_b(
-        env: ManagerBasedRlEnv,
-) -> torch.Tensor:
+def fake_base_commands_b(env: ManagerBasedRlEnv) -> torch.Tensor:
+    """Return zero base commands (stationary target at current pose)."""
     target_pose_xy = torch.zeros((env.num_envs, 2), device=env.device)
     target_orientation_x = torch.zeros((env.num_envs, 2), device=env.device)
     target_orientation_x[:, 0] = 1.0
-
-    return torch.cat(
-        [
-            target_pose_xy,
-            target_orientation_x,
-        ], dim=-1
-    )
+    return torch.cat([target_pose_xy, target_orientation_x], dim=-1)
 
 
 def base_se3_decrease_rate(
         env: ManagerBasedRlEnv,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
-    base_pose_command = env.command_manager.get_term(command_name)
-    return base_pose_command.decrease_vel.unsqueeze(-1)
+    return env.command_manager.get_term(command_name).se3_decay_rate.unsqueeze(-1)
 
 
 def base_commands_vel_c(
         env: ManagerBasedRlEnv,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
-    base_pose_command = env.command_manager.get_term(command_name)
-    return base_pose_command.pose_command_vel_c
+    return env.command_manager.get_term(command_name).vel_command_t

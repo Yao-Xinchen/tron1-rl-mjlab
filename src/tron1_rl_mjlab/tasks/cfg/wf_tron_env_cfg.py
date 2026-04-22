@@ -54,7 +54,7 @@ def make_commands() -> dict[str, CommandTermCfg]:
                 vel_y=(-0.0, 0.0),  # min max [m/s] in target frame
                 vel_yaw=(-0.0, 0.0),  # min max [rad/s]
             ),
-            se3_decrease_vel_range=(0.5, 1.4),
+            se3_decay_rate_range=(0.5, 1.4),
         )
     }
 
@@ -307,7 +307,7 @@ def make_rewards() -> dict[str, RewardTermCfg]:
                 "std": math.sqrt(0.5),
             },
         ),
-        "track_base_pb": RewardTermCfg(func=mdp.track_base_pb, weight=15.0),
+        "track_base_progress": RewardTermCfg(func=mdp.track_base_progress, weight=15.0),
         "track_base_reference_exp": RewardTermCfg(
             func=mdp.track_base_reference_exp,
             weight=1.5,
@@ -349,7 +349,7 @@ def make_rewards() -> dict[str, RewardTermCfg]:
             },
         ),
         "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.002),
-        "action_smoothness": RewardTermCfg(func=mdp.action_smoothness_penalty, weight=-0.006),
+        "action_smoothness": RewardTermCfg(func=mdp.action_acc_l2, weight=-0.006),
         "dof_vel_wheel_l2": RewardTermCfg(
             func=mdp.joint_vel_l2,
             weight=-0.0005,
