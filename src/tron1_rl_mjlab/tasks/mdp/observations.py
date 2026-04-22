@@ -89,7 +89,7 @@ def base_commands_b(
         env: ManagerBasedRlEnv,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
-    target_pose_b = env.command_manager.get_command(command_name)
+    target_pose_b = env.command_manager.get_term(command_name).pose_command_est_b
     target_pose_xy = target_pose_b[:, :2]
     target_orientation_x = matrix_from_quat(quat_unique(target_pose_b[:, 3:7]))[:, :, 0]
     return torch.cat([target_pose_xy, target_orientation_x[:, :2]], dim=-1)

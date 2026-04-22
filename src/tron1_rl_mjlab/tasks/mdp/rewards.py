@@ -85,7 +85,7 @@ def track_base_position_exp(
         std: float,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
-    position_error = env.command_manager.get_term(command_name).metrics["position_error"]
+    position_error = env.command_manager.get_term(command_name).metrics["est_position_error"]
     normal = torch.exp(-position_error / std ** 2)
     micro_enhancement = torch.exp(-5 * position_error / std ** 2)
     return (normal + micro_enhancement) * 0.5 * env._loco_safety_scale
@@ -96,8 +96,9 @@ def track_base_orientation_exp(
         std: float,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
-    position_error = env.command_manager.get_term(command_name).metrics["position_error"]
-    position_scale = torch.exp(-position_error / 0.5)
+    # Scale by estimated position error (what the robot observes) but keep orientation on true
+    est_position_error = env.command_manager.get_term(command_name).metrics["est_position_error"]
+    position_scale = torch.exp(-est_position_error / 0.5)
     orientation_error = env.command_manager.get_term(command_name).metrics["orientation_error"]
     normal = torch.exp(-orientation_error / std ** 2)
     micro_enhancement = torch.exp(-5 * orientation_error / std ** 2)
@@ -105,11 +106,11 @@ def track_base_orientation_exp(
 
 
 def track_base_progress(env: ManagerBasedRlEnv, command_name: str = "base_pose") -> torch.Tensor:
-    """Reward improvement over the best-achieved position and orientation errors this episode."""
+    """Reward improvement over the best-achieved estimated position and true orientation errors."""
     cmd = env.command_manager.get_term(command_name)
-    position_scale = torch.exp(-cmd.min_pos_error / 0.5)
+    est_position_scale = torch.exp(-cmd.est_min_pos_error / 0.5)
     orient_scale = torch.exp(-cmd.min_orient_error / 0.5)
-    return (2 * cmd.pos_improvement * position_scale + cmd.orient_improvement * orient_scale) * env._loco_safety_scale
+    return (2 * cmd.est_pos_improvement * est_position_scale + cmd.orient_improvement * orient_scale) * env._loco_safety_scale
 
 
 def track_base_reference_exp(
@@ -118,11 +119,11 @@ def track_base_reference_exp(
         delta: float = 0.5,
         command_name: str = "base_pose",
 ) -> torch.Tensor:
-    position_error = env.command_manager.get_term(command_name).metrics["position_error"]
+    est_position_error = env.command_manager.get_term(command_name).metrics["est_position_error"]
     orientation_error = env.command_manager.get_term(command_name).metrics["orientation_error"]
-    se3_distance_ref = env.command_manager.get_term(command_name).se3_distance_ref
+    se3_distance_ref = env.command_manager.get_term(command_name).se3_distance_ref_est
     track_error = torch.clamp(
-        torch.abs(se3_distance_ref - orientation_error - 2 * position_error) - delta, min=0.0
+        torch.abs(se3_distance_ref - orientation_error - 2 * est_position_error) - delta, min=0.0
     )
     return torch.exp(-track_error / std ** 2) * 0.5 * env._loco_safety_scale
 

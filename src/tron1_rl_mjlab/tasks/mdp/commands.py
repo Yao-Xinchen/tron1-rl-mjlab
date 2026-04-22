@@ -135,6 +135,24 @@ class UniformWorldPoseCommand(UniformPoseCommand):
         # Linear and yaw velocity commands expressed in the target pose frame
         self.vel_command_t = torch.zeros(self.num_envs, 3, device=self.device)
 
+        # --- Estimated position tracking ---
+        # Estimated robot world position (integrated from velocity estimator; aligned to true at reset)
+        self.robot_pos_est_w = torch.zeros(self.num_envs, 3, device=self.device)
+        # Shared velocity-estimate buffer injected by the encoder (body frame, shape (num_envs, 3))
+        self._vel_est_buf: torch.Tensor | None = None
+        # Estimated command in body frame: derived from pose_command_w and robot_pos_est_w
+        self.pose_command_est_b = torch.zeros(self.num_envs, 7, device=self.device)
+        self.pose_command_est_b[:, 3] = 1.0
+        # Estimated tracking metrics (mirror of true metrics)
+        self.metrics["est_position_error"] = torch.zeros(self.num_envs, device=self.device)
+        self.se3_distance_ref_est = torch.ones(self.num_envs, device=self.device)
+        self.est_min_pos_error = torch.zeros(self.num_envs, device=self.device)
+        self.est_pos_improvement = torch.zeros(self.num_envs, device=self.device)
+
+    def register_vel_est(self, buf: torch.Tensor) -> None:
+        """Register the encoder's velocity-estimate buffer for shared in-place access."""
+        self._vel_est_buf = buf
+
     def _refresh_errors(self) -> None:
         """Recompute pose_command_b and error metrics from the current world command."""
         self.pose_command_b[:, :3] = quat_apply_inverse(
@@ -153,13 +171,22 @@ class UniformWorldPoseCommand(UniformPoseCommand):
 
     def _update_metrics(self) -> None:
         self._refresh_errors()
+        dt = self._env.step_dt
         self.se3_distance_ref = torch.clamp(
-            self.se3_distance_ref - self.se3_decay_rate * self._env.step_dt, min=0.0
+            self.se3_distance_ref - self.se3_decay_rate * dt, min=0.0
         )
         self.pos_improvement = (self.min_pos_error - self.metrics["position_error"]).clip(min=0.0)
         self.orient_improvement = (self.min_orient_error - self.metrics["orientation_error"]).clip(min=0.0)
         self.min_pos_error[:] = torch.minimum(self.metrics["position_error"], self.min_pos_error)
         self.min_orient_error[:] = torch.minimum(self.metrics["orientation_error"], self.min_orient_error)
+        # Estimated position metrics
+        est_pos_err = torch.norm(self.pose_command_est_b[:, :2], dim=-1)
+        self.metrics["est_position_error"] = est_pos_err
+        self.se3_distance_ref_est = torch.clamp(
+            self.se3_distance_ref_est - self.se3_decay_rate * dt, min=0.0
+        )
+        self.est_pos_improvement = (self.est_min_pos_error - est_pos_err).clip(min=0.0)
+        self.est_min_pos_error[:] = torch.minimum(est_pos_err, self.est_min_pos_error)
 
     def _update_se3_ref(self, env_ids: Sequence[int]) -> None:
         """Initialize SE(3) reference distance and episode-best errors for reset environments."""
@@ -171,21 +198,38 @@ class UniformWorldPoseCommand(UniformPoseCommand):
         self.min_orient_error[env_ids] = ori_err
         self.pos_improvement[env_ids] = 0.0
         self.orient_improvement[env_ids] = 0.0
+        # Reset estimated command to true (aligned at episode start)
+        self.pose_command_est_b[env_ids] = self.pose_command_b[env_ids].clone()
+        est_pos_err = torch.norm(self.pose_command_est_b[env_ids, :2], dim=-1)
+        self.se3_distance_ref_est[env_ids] = 2 * est_pos_err + ori_err
+        self.est_min_pos_error[env_ids] = est_pos_err
+        self.est_pos_improvement[env_ids] = 0.0
 
     def _update_command(self) -> None:
-        if not self._has_vel_commands:
-            return
         dt = self._env.step_dt
-        vel_t_3d = torch.cat(
-            [self.vel_command_t[:, :2], torch.zeros(self.num_envs, 1, device=self.device)], dim=-1
+        if self._has_vel_commands:
+            vel_t_3d = torch.cat(
+                [self.vel_command_t[:, :2], torch.zeros(self.num_envs, 1, device=self.device)], dim=-1
+            )
+            vel_w = quat_apply(self.pose_command_w[:, 3:], vel_t_3d)
+            self.pose_command_w[:, :2] += vel_w[:, :2] * dt
+            delta_yaw = self.vel_command_t[:, 2] * dt
+            delta_quat = quat_from_euler_xyz(
+                torch.zeros_like(delta_yaw), torch.zeros_like(delta_yaw), delta_yaw
+            )
+            self.pose_command_w[:, 3:] = quat_unique(quat_mul(self.pose_command_w[:, 3:], delta_quat))
+        # Integrate estimated robot position from the velocity-estimate buffer (body → world frame)
+        if self._vel_est_buf is not None:
+            vel_est_w = quat_apply(self.robot.data.root_link_quat_w, self._vel_est_buf)
+            self.robot_pos_est_w += vel_est_w * dt
+        # Recompute estimated body-frame command from true world target and estimated robot position
+        self.pose_command_est_b[:, :3] = quat_apply_inverse(
+            self.robot.data.root_link_quat_w,
+            self.pose_command_w[:, :3] - self.robot_pos_est_w,
         )
-        vel_w = quat_apply(self.pose_command_w[:, 3:], vel_t_3d)
-        self.pose_command_w[:, :2] += vel_w[:, :2] * dt
-        delta_yaw = self.vel_command_t[:, 2] * dt
-        delta_quat = quat_from_euler_xyz(
-            torch.zeros_like(delta_yaw), torch.zeros_like(delta_yaw), delta_yaw
+        self.pose_command_est_b[:, 3:] = quat_unique(
+            quat_mul(quat_inv(self.robot.data.root_link_quat_w), self.pose_command_w[:, 3:])
         )
-        self.pose_command_w[:, 3:] = quat_unique(quat_mul(self.pose_command_w[:, 3:], delta_quat))
 
     def _resample_command(self, env_ids: Sequence[int]) -> None:
         r = torch.empty(len(env_ids), device=self.device)
@@ -203,6 +247,8 @@ class UniformWorldPoseCommand(UniformPoseCommand):
         self.se3_decay_rate[env_ids] = sample_uniform(
             *self._decay_rate_range, len(env_ids), device=self.device
         )
+        # Align estimated robot position to true position (resets drift)
+        self.robot_pos_est_w[env_ids] = self.robot.data.root_link_pos_w[env_ids].clone()
         if self._has_vel_commands:
             self.vel_command_t[env_ids, 0] = r.uniform_(*self.cfg.ranges.vel_x)
             self.vel_command_t[env_ids, 1] = r.uniform_(*self.cfg.ranges.vel_y)

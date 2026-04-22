@@ -1,4 +1,22 @@
+from dataclasses import dataclass
+
 from mjlab.rl import RslRlModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
+
+
+@dataclass
+class RslRlEncoderActorCfg(RslRlModelCfg):
+    """Actor config for EncoderModel (history encoder + decoder + velocity head)."""
+
+    class_name: str = "rsl_rl.models:EncoderModel"
+    encoder_hidden_dims: tuple = (256, 128)
+    encoder_latent_dim: int = 32
+    decoder_hidden_dims: tuple = (128, 256)
+    actor_obs_key: str = "actor"
+    history_obs_key: str = "history"
+    privileged_obs_key: str = "critic"
+    velocity_obs_key: str = "velocity"
+    decoder_loss_coef: float = 1.0
+    velocity_loss_coef: float = 1.0
 
 
 def make_wf_tron_rl_cfg() -> RslRlOnPolicyRunnerCfg:
@@ -9,7 +27,8 @@ def make_wf_tron_rl_cfg() -> RslRlOnPolicyRunnerCfg:
         save_interval=200,
         wandb_project="mjlab_wf_tron",
         experiment_name="wf_tron",
-        actor=RslRlModelCfg(
+        obs_groups={"actor": ("actor", "history", "critic", "velocity"), "critic": ("critic",)},
+        actor=RslRlEncoderActorCfg(
             hidden_dims=(512, 256, 128),
             activation="elu",
             distribution_cfg={

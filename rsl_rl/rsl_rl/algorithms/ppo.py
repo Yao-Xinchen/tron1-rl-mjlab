@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from itertools import chain
 from tensordict import TensorDict
@@ -213,6 +214,10 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
+        # Encoder losses (only when actor is an EncoderModel)
+        has_encoder = hasattr(self.actor, "get_decoder_out")
+        mean_decoder_loss = 0.0 if has_encoder else None
+        mean_vel_loss = 0.0 if has_encoder else None
         # RND loss
         mean_rnd_loss = 0 if self.rnd else None
         # Symmetry loss
@@ -312,6 +317,12 @@ class PPO:
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
 
+            # Encoder decoder + velocity supervision losses
+            if has_encoder:
+                decoder_loss = F.mse_loss(self.actor.get_decoder_out(), batch.observations[self.actor.privileged_obs_key])  # type: ignore[union-attr]
+                vel_loss = F.mse_loss(self.actor.get_vel_est(), batch.observations[self.actor.velocity_obs_key])  # type: ignore[union-attr]
+                loss = loss + self.actor.decoder_loss_coef * decoder_loss + self.actor.velocity_loss_coef * vel_loss  # type: ignore[union-attr]
+
             # Symmetry loss
             if self.symmetry:
                 # Obtain the symmetric actions
@@ -382,6 +393,10 @@ class PPO:
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
             mean_entropy += entropy.mean().item()
+            # Encoder losses
+            if mean_decoder_loss is not None:
+                mean_decoder_loss += decoder_loss.item()  # type: ignore[union-attr]
+                mean_vel_loss += vel_loss.item()  # type: ignore[union-attr]
             # RND loss
             if mean_rnd_loss is not None:
                 mean_rnd_loss += rnd_loss.item()
@@ -394,6 +409,9 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
+        if mean_decoder_loss is not None:
+            mean_decoder_loss /= num_updates
+            mean_vel_loss /= num_updates  # type: ignore[operator]
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
         if mean_symmetry_loss is not None:
@@ -408,6 +426,9 @@ class PPO:
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
+        if has_encoder:
+            loss_dict["decoder"] = mean_decoder_loss
+            loss_dict["vel"] = mean_vel_loss
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:

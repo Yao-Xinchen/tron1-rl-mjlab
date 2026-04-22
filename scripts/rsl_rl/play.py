@@ -241,7 +241,7 @@ def run_play(task_id: str, cfg: PlayConfig):
             assert log_dir is not None
             runner.export_policy_to_onnx(str(log_dir), "policy.onnx")
             print(f"[INFO]: Exported student policy to {log_dir / 'policy.onnx'}")
-        policy = runner.get_inference_policy_student(device=device)
+        policy = runner.get_inference_policy(device=device)
 
     # Handle "auto" viewer selection.
     if cfg.viewer == "auto":

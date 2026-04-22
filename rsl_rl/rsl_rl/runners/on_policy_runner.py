@@ -39,6 +39,16 @@ class OnPolicyRunner:
         alg_class: type[PPO] = resolve_callable(self.cfg["algorithm"]["class_name"])  # type: ignore
         self.alg = alg_class.construct_algorithm(obs, self.env, self.cfg, self.device)
 
+        # Register shared velocity-estimate buffer with the command manager (EncoderModel only).
+        # The actor writes _vel_est in-place during forward(); the command reads it directly.
+        if hasattr(self.alg.actor, "_vel_est"):
+            try:
+                term = self.env.unwrapped.command_manager.get_term("base_pose")
+                if hasattr(term, "register_vel_est"):
+                    term.register_vel_est(self.alg.actor._vel_est)
+            except Exception:
+                pass  # env does not use estimated position commands
+
         # Create the logger
         self.logger = Logger(
             log_dir=log_dir,

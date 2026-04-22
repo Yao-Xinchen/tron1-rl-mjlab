@@ -149,8 +149,18 @@ def make_observations() -> dict[str, ObservationGroupCfg]:
         "foot_rel_position_w": ObservationTermCfg(func=mdp.foot_rel_position_w, scale=1.5),
     }
 
+    # Velocity observation terms
+    velocity_terms = {
+        "base_lin_vel": ObservationTermCfg(func=mdp.base_lin_vel, scale=1.0),
+    }
+
     return {
         "actor": ObservationGroupCfg(
+            terms=commands_terms | policy_terms,
+            enable_corruption=True,
+            concatenate_terms=True,
+        ),
+        "history": ObservationGroupCfg(
             terms=commands_terms | policy_terms,
             enable_corruption=True,
             concatenate_terms=True,
@@ -159,6 +169,11 @@ def make_observations() -> dict[str, ObservationGroupCfg]:
         ),
         "critic": ObservationGroupCfg(
             terms=commands_terms | critic_terms,
+            enable_corruption=False,
+            concatenate_terms=True,
+        ),
+        "velocity": ObservationGroupCfg(
+            terms=velocity_terms,
             enable_corruption=False,
             concatenate_terms=True,
         ),
