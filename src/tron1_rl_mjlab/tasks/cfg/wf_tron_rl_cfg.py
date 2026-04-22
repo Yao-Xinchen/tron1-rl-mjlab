@@ -30,10 +30,13 @@ class RslRlEncoderRNNActorCfg(RslRlModelCfg):
     rnn_hidden_dim: int = 512
     rnn_num_layers: int = 1
 
-    # Decoder heads: reconstruct privileged obs + height map
+    # GRU decoder heads: GRU latent → privileged obs + height map
     privileged_decoder_obs_group: str = "critic"
     height_map_decoder_obs_group: str = "height_map"
     decoder_hidden_dims: tuple = (512, 256)
+
+    # CNN depth autoencoder: CNN features → reconstructed depth image
+    depth_decoder_hidden_dims: tuple = (256, 512)
 
 
 @dataclass
@@ -46,7 +49,16 @@ class RslRlPPOWithDecoderAlgorithmCfg(RslRlPpoAlgorithmCfg):
     privileged_obs_group: str = "critic"
     height_map_obs_group: str = "height_map"
 
-    # Weight on the total reconstruction loss (GRU + CNN decoders)
+    # Obs group containing raw depth images (buffered during rollout for CNN update)
+    depth_obs_group: str = "depth_camera"
+
+    # CNN autoencoder params (independent of PPO / GRU reconstruction params)
+    # Fraction of rollout images used per CNN update  (e.g. 0.25 → 6144 / 24576)
+    cnn_image_fraction: float = 0.25
+    # Images per CNN gradient step; controls peak CNN activation memory
+    cnn_mini_batch_size: int = 768
+
+    # Weight on GRU reconstruction losses relative to PPO loss
     recon_loss_coef: float = 1.0
 
 
