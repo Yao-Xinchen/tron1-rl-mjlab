@@ -145,6 +145,7 @@ class UniformWorldPoseCommand(UniformPoseCommand):
         self.pose_command_est_b[:, 3] = 1.0
         # Estimated tracking metrics (mirror of true metrics)
         self.metrics["est_position_error"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["position_est_drift"] = torch.zeros(self.num_envs, device=self.device)
         self.se3_distance_ref_est = torch.ones(self.num_envs, device=self.device)
         self.est_min_pos_error = torch.zeros(self.num_envs, device=self.device)
         self.est_pos_improvement = torch.zeros(self.num_envs, device=self.device)
@@ -182,6 +183,8 @@ class UniformWorldPoseCommand(UniformPoseCommand):
         # Estimated position metrics
         est_pos_err = torch.norm(self.pose_command_est_b[:, :2], dim=-1)
         self.metrics["est_position_error"] = est_pos_err
+        drift = self.robot_pos_est_w[:, :2] - self.robot.data.root_link_pos_w[:, :2]
+        self.metrics["position_est_drift"] = torch.norm(drift, dim=-1)
         self.se3_distance_ref_est = torch.clamp(
             self.se3_distance_ref_est - self.se3_decay_rate * dt, min=0.0
         )
@@ -262,6 +265,10 @@ class UniformWorldPoseCommand(UniformPoseCommand):
             visualizer.add_frame(position=target_pos, rotation_matrix=rot_mat, scale=0.3, label=f"cmd_{env_idx}")
             visualizer.add_sphere(center=target_pos, radius=0.04, color=(1.0, 0.5, 0.0, 0.8),
                                   label=f"cmd_sphere_{env_idx}")
+            # Estimated robot position — drifts from true when velocity estimator is imperfect.
+            est_pos = self.robot_pos_est_w[env_idx]
+            visualizer.add_sphere(center=est_pos, radius=0.04, color=(0.0, 0.8, 1.0, 0.8),
+                                  label=f"est_robot_{env_idx}")
 
     def _resample(self, env_ids: Sequence[int]) -> None:
         if len(env_ids) == 0:
