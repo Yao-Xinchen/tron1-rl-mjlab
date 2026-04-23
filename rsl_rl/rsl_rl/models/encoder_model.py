@@ -74,9 +74,10 @@ class EncoderModel(MLPModel):
         self._history_size = history_dim
         self._vel_dim = vel_dim
 
-        # Persistent buffer shared with the command manager (moves with model, written in-place).
+        # Non-persistent buffer shared with the command manager (moves with model, written in-place).
         # Shape is (num_envs, vel_dim) — only updated during rollout, not minibatch updates.
-        self.register_buffer("_vel_est", torch.zeros(num_envs, vel_dim))
+        # persistent=False excludes it from state_dict so num_envs doesn't leak into checkpoints.
+        self.register_buffer("_vel_est", torch.zeros(num_envs, vel_dim), persistent=False)
         self._decoder_out: torch.Tensor | None = None
         # Current-forward-pass output (may be minibatch-sized); read by PPO loss.
         self._vel_est_current: torch.Tensor | None = None
@@ -103,6 +104,12 @@ class EncoderModel(MLPModel):
         self._vel_est_current = vel_out
         actor_obs = self.obs_normalizer(obs[self.actor_obs_key])  # type: ignore[operator]
         return torch.cat([actor_obs, z], dim=-1)
+
+    def load_state_dict(self, state_dict, strict=True, assign=False):
+        # _vel_est is a non-persistent runtime buffer — strip it from old checkpoints
+        # that saved it as a persistent buffer before this was changed.
+        state_dict.pop("_vel_est", None)
+        return super().load_state_dict(state_dict, strict=strict, assign=assign)
 
     # ------------------------------------------------------------------
     # Encoder-specific accessors (called by PPO after each forward pass)
