@@ -75,8 +75,11 @@ class EncoderModel(MLPModel):
         self._vel_dim = vel_dim
 
         # Persistent buffer shared with the command manager (moves with model, written in-place).
+        # Shape is (num_envs, vel_dim) — only updated during rollout, not minibatch updates.
         self.register_buffer("_vel_est", torch.zeros(num_envs, vel_dim))
         self._decoder_out: torch.Tensor | None = None
+        # Current-forward-pass output (may be minibatch-sized); read by PPO loss.
+        self._vel_est_current: torch.Tensor | None = None
 
     # ------------------------------------------------------------------
     # MLPModel overrides
@@ -91,8 +94,13 @@ class EncoderModel(MLPModel):
 
     def get_latent(self, obs: TensorDict, masks=None, hidden_state=None) -> torch.Tensor:
         z = self.encoder_mlp(obs[self.history_obs_key])
-        self._vel_est.copy_(self.vel_head(z))  # type: ignore[union-attr]
+        vel_out = self.vel_head(z)
         self._decoder_out = self.decoder_mlp(z)
+        # Update the shared buffer only during rollout (full num_envs batch).
+        # During PPO minibatch updates the batch size differs — skip the copy.
+        if vel_out.shape[0] == self._vel_est.shape[0]:  # type: ignore[union-attr]
+            self._vel_est.copy_(vel_out)  # type: ignore[union-attr]
+        self._vel_est_current = vel_out
         actor_obs = self.obs_normalizer(obs[self.actor_obs_key])  # type: ignore[operator]
         return torch.cat([actor_obs, z], dim=-1)
 
@@ -107,8 +115,10 @@ class EncoderModel(MLPModel):
         return self._decoder_out
 
     def get_vel_est(self) -> torch.Tensor:
-        """Velocity estimate from the most recent forward pass (also the shared env buffer)."""
-        return self._vel_est  # type: ignore[return-value]
+        """Velocity estimate from the most recent forward pass, used by PPO for the velocity loss."""
+        if self._vel_est_current is None:
+            raise RuntimeError("Call forward() before get_vel_est()")
+        return self._vel_est_current
 
     # ------------------------------------------------------------------
     # Export (decoder excluded — not needed at deployment)
